@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for SageMaker resources'
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Name of the S3 bucket for SageMaker data
+    Default: retail-forecasting-data
+
+  SageMakerRoleName:
+    Type: String
+    Description: Name of the IAM role for SageMaker
+    Default: SageMakerExecutionRole
+
+Resources:
+  SageMakerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref SageMakerRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  AmplifyServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AmplifyServiceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+Outputs:
+  SageMakerBucketName:
+    Description: Name of the S3 bucket for SageMaker data
+    Value: !Ref SageMakerBucket
+
+  SageMakerRoleArn:
+    Description: ARN of the IAM role for SageMaker
+    Value: !GetAtt SageMakerExecutionRole.Arn
+
+  AmplifyServiceRoleArn:
+    Description: ARN of the IAM role for Amplify
+    Value: !GetAtt AmplifyServiceRole.Arn

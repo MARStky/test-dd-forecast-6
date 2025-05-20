@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Retail Forecasting application resources'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  BucketNamePrefix:
+    Type: String
+    Default: retail-forecasting
+    Description: Prefix for S3 bucket names
+
+Resources:
+  # S3 bucket for storing datasets and model artifacts
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BucketNamePrefix}-data-${Environment}-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - "*"
+            MaxAge: 3600
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM role for SageMaker execution
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "SageMakerExecutionRole-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  # IAM role for Amplify service
+  AmplifyServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AmplifyServiceRole-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  # Custom policy for Bedrock access
+  BedrockAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "BedrockAccessPolicy-${Environment}"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: "*"
+      Roles:
+        - !Ref AmplifyServiceRole
+
+  # Parameter store for configuration values
+  ConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/retail-forecasting/${Environment}/config"
+      Type: String
+      Value: !Sub |
+        {
+          "dataBucket": "${DataBucket}",
+          "sageMakerRoleArn": "${SageMakerExecutionRole.Arn}",
+          "region": "${AWS::Region}",
+          "environment": "${Environment}"
+        }
+      Description: Configuration for Retail Forecasting application
+
+Outputs:
+  DataBucketName:
+    Description: Name of the S3 bucket for data storage
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-DataBucketName"
+
+  SageMakerRoleArn:
+    Description: ARN of the IAM role for SageMaker
+    Value: !GetAtt SageMakerExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SageMakerRoleArn"
+
+  AmplifyServiceRoleArn:
+    Description: ARN of the IAM role for Amplify
+    Value: !GetAtt AmplifyServiceRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AmplifyServiceRoleArn"
+
+  ConfigParameterName:
+    Description: Name of the SSM Parameter for configuration
+    Value: !Ref ConfigParameter
+    Export:
+      Name: !Sub "${AWS::StackName}-ConfigParameterName"
